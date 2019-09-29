@@ -140,6 +140,7 @@ if [ "$OPT" = 'yes' ]; then
 fi
 
 if [ "$X11" = 'yes' ]; then
+	echo 'xhdr = -I/usr/X11/include' >>Makefile
 	echo 'xlib = -L/usr/X11/lib -lX11' >>Makefile
 	if [ -n "`check_header X11/extensions/XInput2.h 2>&1`" ]; then
 		echo 'xlib += -lXi' >>Makefile
