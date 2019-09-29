@@ -84,9 +84,6 @@ struct usb_device_info *find_usb_devices(int (*match)(const struct usb_device_in
 		devinfo.vendorid = vendorID;
 		devinfo.productid = productID;
 
-		/* debug print */
-		print_usb_device_info(&devinfo);
-
 		if(!match || match(&devinfo)) {
 			struct usb_device_info *node = malloc(sizeof *node);
 			if(node) {
