@@ -41,7 +41,7 @@ struct usb_device_info *find_usb_devices(int (*match)(const struct usb_device_in
 	io_object_t dev;
 	io_iterator_t iter;
 	CFMutableDictionaryRef match_dict;
-	CFNumberRef number_ref;
+	/* CFNumberRef number_ref; */
 
 	match_dict = IOServiceMatching(kIOHIDDeviceKey);
 
