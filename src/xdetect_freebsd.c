@@ -158,7 +158,8 @@ int handle_xdet_events(fd_set *rset)
 
 	return -1;
 }
-
+#else
+int spacenavd_xdetect_freebsd_shut_up_empty_source_warning;
 #endif	/* USE_X11 */
 
 #else

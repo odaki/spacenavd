@@ -527,5 +527,6 @@ alt_detect:
 
 	return devlist;
 }
-
+#else
+int spacenavd_dev_usb_linux_shut_up_empty_source_warning;
 #endif	/* __linux__ */
