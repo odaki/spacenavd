@@ -20,6 +20,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define PROTO_X11_H_
 
 #include "config.h"
+
+#ifdef USE_X11
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
@@ -38,6 +40,6 @@ void set_client_window(Window win);
 void remove_client_window(Window win);
 
 void drop_xinput(void);
-
+#endif  /* USE_X11 */
 
 #endif	/* PROTO_X11_H_ */
