@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <string.h>
 #include <errno.h>
 #include <IOKit/IOKitLib.h>
+#include <IOKit/usb/IOUSBLib.h>
 #include <IOKit/hid/IOHIDLib.h>
 #include "spnavd.h"
 #include "dev.h"
@@ -43,7 +44,8 @@ struct usb_device_info *find_usb_devices(int (*match)(const struct usb_device_in
 	CFMutableDictionaryRef match_dict;
 	/* CFNumberRef number_ref; */
 
-	match_dict = IOServiceMatching(kIOHIDDeviceKey);
+	//match_dict = IOServiceMatching(kIOHIDDeviceKey);
+	match_dict = IOServiceMatching(kIOUSBDeviceClassName);
 
 	/* add filter rule: vendor-id should be 3dconnexion's */
 	/*number_ref = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &vendor_id);
@@ -68,6 +70,22 @@ struct usb_device_info *find_usb_devices(int (*match)(const struct usb_device_in
 		devinfo.num_devfiles = 1;
 
 		/* TODO retrieve vendor id and product id */
+		io_name_t deviceName;
+		if (IORegistryEntryGetName(dev, deviceName) == KERN_SUCCESS) {
+			CFStringRef deviceNameAsCFString = CFStringCreateWithCString(kCFAllocatorDefault, deviceName, kCFStringEncodingASCII);
+			devinfo.name = strdup(CFStringGetCStringPtr(deviceNameAsCFString, kCFStringEncodingASCII));
+		}
+
+		unsigned int vendorID, productID;
+		CFNumberRef vendorIDRef = IORegistryEntrySearchCFProperty(dev, kIOServicePlane, CFSTR("idVendor"), kCFAllocatorDefault, kIORegistryIterateRecursively);
+		CFNumberGetValue(vendorIDRef, kCFNumberSInt32Type, &vendorID);
+		CFNumberRef productIDRef = IORegistryEntrySearchCFProperty(dev, kIOServicePlane, CFSTR("idProduct"), kCFAllocatorDefault, kIORegistryIterateRecursively);
+		CFNumberGetValue(productIDRef, kCFNumberSInt32Type, &productID);
+		devinfo.vendorid = vendorID;
+		devinfo.productid = productID;
+
+		/* debug print */
+		print_usb_device_info(&devinfo);
 
 		if(!match || match(&devinfo)) {
 			struct usb_device_info *node = malloc(sizeof *node);
@@ -81,6 +99,7 @@ struct usb_device_info *find_usb_devices(int (*match)(const struct usb_device_in
 				node->next = devlist;
 				devlist = node;
 			} else {
+				free(devinfo.name);
 				free(devinfo.devfiles[0]);
 				logmsg(LOG_ERR, "failed to allocate usb device info node: %s\n", strerror(errno));
 			}
