@@ -23,6 +23,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <errno.h>
 #include <IOKit/IOKitLib.h>
 #include <IOKit/usb/IOUSBLib.h>
+#include <IOKit/hid/IOHIDManager.h>
+#include <IOKit/hid/IOHIDKeys.h>
 #include <IOKit/hid/IOHIDLib.h>
 #include "spnavd.h"
 #include "dev.h"
@@ -30,6 +32,36 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 int open_dev_usb(struct device *dev)
 {
+	io_registry_entry_t entry = MACH_PORT_NULL;
+	IOHIDDeviceRef  handle = NULL;
+
+	entry = IORegistryEntryFromPath(kIOMasterPortDefault, dev->path);
+	if (entry == MACH_PORT_NULL) {
+		logmsg(LOG_ERR, "IORegistryEntryFromPath failed\n");
+		goto error_return;
+	}
+	handle = IOHIDDeviceCreate(kCFAllocatorDefault, entry);
+	if (handle == NULL) {
+		logmsg(LOG_ERR, "IOHIDDeviceCreate failed\n");
+		goto error_return;
+	}
+
+	IOReturn ret = IOHIDDeviceOpen(handle, kIOHIDOptionsTypeSeizeDevice);
+	if (ret != kIOReturnSuccess) {
+		logmsg(LOG_ERR, "IOHIDDeviceOpen failed\n");
+		goto error_return;
+	}
+
+	IOObjectRelease(entry);
+	return 0;
+
+error_return:
+	if (handle != NULL) {
+		CFRelease(handle);
+	}
+	if (entry != MACH_PORT_NULL) {
+		IOObjectRelease(entry);
+	}
 	return -1;
 }
 
@@ -62,27 +94,54 @@ struct usb_device_info *find_usb_devices(int (*match)(const struct usb_device_in
 	while((dev = IOIteratorNext(iter))) {
 		memset(&devinfo, 0, sizeof devinfo);
 
-		IORegistryEntryGetPath(dev, kIOServicePlane, dev_path);
-		if(!(devinfo.devfiles[0] = strdup(dev_path))) {
-			logmsg(LOG_ERR, "failed to allocate device file path buffer: %s\n", strerror(errno));
+		if (IORegistryEntryGetPath(dev, kIOServicePlane, dev_path) != KERN_SUCCESS) {
+			logmsg(LOG_ERR, "failed to get device path\n");
+			continue;
+		}
+		devinfo.devfiles[0] = strdup(dev_path);
+		if(devinfo.devfiles[0] == NULL) {
+			logmsg(LOG_ERR, "failed to allocate device file path buffer\n");
 			continue;
 		}
 		devinfo.num_devfiles = 1;
 
 		/* TODO retrieve vendor id and product id */
 		io_name_t deviceName;
-		if (IORegistryEntryGetName(dev, deviceName) == KERN_SUCCESS) {
-			CFStringRef deviceNameAsCFString = CFStringCreateWithCString(kCFAllocatorDefault, deviceName, kCFStringEncodingASCII);
-			devinfo.name = strdup(CFStringGetCStringPtr(deviceNameAsCFString, kCFStringEncodingASCII));
+		if (IORegistryEntryGetName(dev, deviceName) != KERN_SUCCESS) {
+			logmsg(LOG_ERR, "failed to get device name\n");
+			free(devinfo.devfiles[0]);
+			continue;
 		}
+		CFStringRef deviceNameAsCFString = CFStringCreateWithCString(
+																					kCFAllocatorDefault,
+ 																					deviceName,
+																					kCFStringEncodingASCII);
+		devinfo.name = strdup(CFStringGetCStringPtr(deviceNameAsCFString, kCFStringEncodingASCII));
+		CFRelease(deviceNameAsCFString);
 
-		unsigned int vendorID, productID;
-		CFNumberRef vendorIDRef = IORegistryEntrySearchCFProperty(dev, kIOServicePlane, CFSTR("idVendor"), kCFAllocatorDefault, kIORegistryIterateRecursively);
+		unsigned int vendorID = 0;
+		CFNumberRef vendorIDRef = IORegistryEntrySearchCFProperty(
+																dev,
+																kIOServicePlane,
+ 																CFSTR(kUSBVendorID), //CFSTR(kIOHIDVendorIDKey),
+ 																kCFAllocatorDefault,
+ 																kIORegistryIterateRecursively);
 		CFNumberGetValue(vendorIDRef, kCFNumberSInt32Type, &vendorID);
-		CFNumberRef productIDRef = IORegistryEntrySearchCFProperty(dev, kIOServicePlane, CFSTR("idProduct"), kCFAllocatorDefault, kIORegistryIterateRecursively);
-		CFNumberGetValue(productIDRef, kCFNumberSInt32Type, &productID);
 		devinfo.vendorid = vendorID;
+		CFRelease(vendorIDRef);
+
+		unsigned int productID = 0;
+		CFNumberRef productIDRef = IORegistryEntrySearchCFProperty(
+																dev,
+ 																kIOServicePlane,
+ 																CFSTR(kUSBProductID), //CFSTR(kIOHIDProductIDKey),
+ 																kCFAllocatorDefault,
+																kIORegistryIterateRecursively);
+		CFNumberGetValue(productIDRef, kCFNumberSInt32Type, &productID);
 		devinfo.productid = productID;
+		CFRelease(productIDRef);
+
+		//print_usb_device_info(&devinfo);
 
 		if(!match || match(&devinfo)) {
 			struct usb_device_info *node = malloc(sizeof *node);
@@ -96,9 +155,9 @@ struct usb_device_info *find_usb_devices(int (*match)(const struct usb_device_in
 				node->next = devlist;
 				devlist = node;
 			} else {
+				logmsg(LOG_ERR, "failed to allocate usb device info node\n");
 				free(devinfo.name);
 				free(devinfo.devfiles[0]);
-				logmsg(LOG_ERR, "failed to allocate usb device info node: %s\n", strerror(errno));
 			}
 		}
 	}
